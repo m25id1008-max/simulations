@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kalibangan Settlement Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1512;
+            color: #fef3c7;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        #gameCanvas {
+            image-rendering: pixelated;
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
+            border: 2px solid #5a3e2b;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            background: rgba(30, 20, 15, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #8b5a33;
+            text-shadow: 1px 1px 0px #000;
+            min-width: 250px;
+            z-index: 10;
+        }
+        .ui-text {
+            font-size: 14px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .value {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+        .danger {
+            color: #ef4444 !important;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+        button {
+            background: #8b5a33;
+            color: #fef3c7;
+            border: 2px solid #dcb68a;
+            padding: 8px 16px;
+            font-family: inherit;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            border-radius: 4px;
+            transition: all 0.2s;
+            box-shadow: 2px 2px 0px #000;
+        }
+        button:hover {
+            background: #a36c43;
+            transform: translateY(-2px);
+            box-shadow: 2px 4px 0px #000;
+        }
+        #legend {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(30, 20, 15, 0.85);
+            padding: 15px;
+            border-radius: 8px;
+            border: 2px solid #8b5a33;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .color-box {
+            width: 12px;
+            height: 12px;
+            margin-right: 8px;
+            border: 1px solid #000;
+        }
+        #historical-event {
+            position: absolute;
+            top: 150px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(139, 0, 0, 0.8);
+            border: 2px solid #ef4444;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            font-weight: bold;
+            letter-spacing: 2px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 1s;
+            z-index: 10;
+        }
+        
+        /* Phase Modal Styling */
+        #phase-modal {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(20, 15, 10, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background: #2a1f1a;
+            border: 3px solid #8b5a33;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 650px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        }
+        .hidden {
+            display: none !important;
+        }
+        
+        /* Notifications */
+        #notification-area {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            align-items: flex-start;
+        }
+    </style>
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+
+    <!-- Hidden YouTube Player for Music -->
+    <div id="ytplayer" style="position: absolute; top: -9999px; left: -9999px; width: 1px; height: 1px; pointer-events: none;"></div>
+
+    <!-- Phase Director Overlay -->
+    <div id="phase-modal">
+        <div class="modal-content">
+            <h2 id="modal-title" class="text-3xl text-[#fbbf24] font-bold mb-4 uppercase tracking-wider">Loading...</h2>
+            <p id="modal-desc" class="text-[#e8cca4] mb-8 text-lg leading-relaxed"></p>
+            <button id="modal-btn" onclick="sim.triggerNextPhase()" class="text-lg px-8 py-3">Begin Phase</button>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div class="ui-text" style="color:#dcb68a; font-size:16px; margin-bottom:10px; border-bottom:1px solid #8b5a33; padding-bottom:5px;">Kalibangan Settlement</div>
+        <div class="ui-text">Year: <span id="year-display" class="value">2900 BCE</span></div>
+        <div class="ui-text">Era: <span id="era-display" class="value">Phase 1: Early Harappan</span></div>
+        <hr style="border-color: #8b5a33; margin: 8px 0;">
+        <div class="ui-text">Time: <span id="time-display" class="value">08:00</span></div>
+        <div class="ui-text">River Ghaggar: <span id="river-display" class="value">Flowing</span></div>
+        <div class="ui-text">Population: <span id="pop-display" class="value">0</span></div>
+    </div>
+
+    <div id="legend">
+        <div class="legend-item"><div class="color-box" style="background:#5a8f9c;"></div> River Ghaggar</div>
+        <div class="legend-item"><div class="color-box" style="background:#d3b897;"></div> Dry River Bed</div>
+        <div class="legend-item"><div class="color-box" style="background:#4a3219;"></div> Fortifications</div>
+        <div class="legend-item"><div class="color-box" style="background:#a36c43;"></div> Mud-Brick Houses</div>
+        <div class="legend-item"><div class="color-box" style="background:#8b5a33;"></div> Ritual Platforms</div>
+        <div class="legend-item"><div class="color-box" style="background:#e8cca4;"></div> Grid Streets</div>
+        <div class="legend-item"><div class="color-box" style="background:#8c735a;"></div> Ruins/Rubble</div>
+        <div class="legend-item"><div class="color-box" style="background:#6b5435;"></div> Ploughed Field</div>
+    </div>
+
+    <div id="historical-event"></div>
+    <div id="notification-area"></div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="controls">
+        <button onclick="sim.togglePause()" id="pauseBtn">Pause</button>
+        <button onclick="sim.speedUp()">Toggle Speed</button>
+        <button onclick="sim.showPhaseModal(1)">Restart Simulation</button>
+        <button onclick="sim.toggleMusic()" id="musicBtn">Play Music</button>
+    </div>
+
+<script>
+/**
+ * Kalibangan Settlement Historical Simulation Engine
+ * Separated into 4 distinct phases in continuity.
+ */
+
+// --- Global YouTube API Setup ---
+let ytPlayer;
+let isYtReady = false;
+
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('ytplayer', {
+        height: '1',
+        width: '1',
+        videoId: 'rskiS64VkfM',
+        playerVars: {
+            'autoplay': 0,
+            'controls': 0,
+            'loop': 1,
+            'playlist': 'rskiS64VkfM' // Required to loop a single video
+        },
+        events: {
+            'onReady': () => { isYtReady = true; }
+        }
+    });
+}
+
+// --- Constants & Config ---
+const TILE_SIZE = 7;
+const COLS = 160;
+const ROWS = 100;
+const CANVAS_WIDTH = COLS * TILE_SIZE;
+const CANVAS_HEIGHT = ROWS * TILE_SIZE;
+
+// Terrain Types
+const TERRAIN = {
+    SAND: 0,
+    WATER: 1,
+    WALL: 2,         
+    STREET: 3,       
+    HOUSE_FLOOR: 4,  
+    HOUSE_WALL: 5,   
+    PLATFORM: 6,     
+    CEMETERY: 7,
+    DRY_BED: 8,      // Dried up river sand
+    RUBBLE: 9,       // Destroyed walls
+    FIELD: 10,       // Ploughed agriculture
+    DRAIN: 11        // Street drainage
+};
+
+const COLORS = {
+    [TERRAIN.SAND]: '#c8a981',        
+    [TERRAIN.WATER]: '#5a8f9c',       
+    [TERRAIN.WALL]: '#4a3219',        
+    [TERRAIN.STREET]: '#e8cca4',      
+    [TERRAIN.HOUSE_FLOOR]: '#b5926b', 
+    [TERRAIN.HOUSE_WALL]: '#a36c43',  
+    [TERRAIN.PLATFORM]: '#8b5a33',    
+    [TERRAIN.CEMETERY]: '#a38a6a',    
+    [TERRAIN.DRY_BED]: '#d3b897',     
+    [TERRAIN.RUBBLE]: '#8c735a',      
+    [TERRAIN.FIELD]: '#6b5435',       
+    [TERRAIN.DRAIN]: '#3d3024',       
+    NIGHT_OVERLAY: 'rgba(5, 5, 15, 0.75)',
+    DUSK_OVERLAY: 'rgba(60, 20, 0, 0.35)'
+};
+
+const CLOTHING_COLORS = ['#f8fafc', '#dc2626', '#b45309', '#eab308', '#d6d3d1'];
+
+const PHASE_INFO = {
+    1: { 
+        title: "Phase 1: Early Harappan Origin", 
+        desc: "The year is 2900 BCE. Early settlers establish a fortified town near the fertile banks of the flowing River Ghaggar. This marks the beginning of the Kalibangan settlement.",
+        btnText: "Start Phase 1"
+    },
+    2: { 
+        title: "Phase 2: Seismic Destruction", 
+        desc: "The year is 2600 BCE. A massive fault line ruptures. A violent earthquake strikes the region, devastating the early settlement and forcing the traumatized population to flee.",
+        btnText: "Trigger Earthquake"
+    },
+    3: { 
+        title: "Phase 3: Mature Harappan Rebuild", 
+        desc: "The year is 2500 BCE. Following a period of abandonment, a new, grander settlement is built precisely over the rubble. It features the iconic dual-mound structure: a fortified Citadel (West) and a lower residential grid city (East).",
+        btnText: "Rebuild Settlement"
+    },
+    4: { 
+        title: "Phase 4: Evolution & Decline", 
+        desc: "The year is 2400 BCE. The city evolves, developing advanced street drainage, ritual fire altars, and the world's earliest known ploughed agricultural field. However, over the next centuries, the climate changes and the life-giving River Ghaggar will slowly dry up...",
+        btnText: "Begin Evolution"
+    },
+    5: { 
+        title: "Simulation Complete", 
+        desc: "By 1900 BCE, Kalibangan is completely abandoned as the river turns to dry sand. The site will lay dormant until its excavation by archaeologists in the 20th century.", 
+        btnText: "Restart Timeline" 
+    }
+};
+
+class KalibanganSim {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        
+        this.canvas.width = CANVAS_WIDTH;
+        this.canvas.height = CANVAS_HEIGHT;
+        
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+
+        this.grid = [];
+        this.riverDepths = []; 
+        this.villagers = [];
+        this.houses = [];
+        this.workplaces = [];
+        
+        this.year = -2900; 
+        this.maxPopulation = 180;
+        this.riverHealth = 1.0; 
+        this.phase = 0;
+        this.nextPhase = 1;
+        
+        this.time = 8 * 60; 
+        this.daySpeed = 0.5; 
+        this.yearSpeed = 0.1; 
+        this.isPaused = false;
+        this.historyPaused = true; 
+        this.isShaking = false;
+        this.isMusicPlaying = false;
+        
+        // Environment events
+        this.weather = 'clear'; // clear, rain, flood, drought, famine
+        this.weatherTimer = 0;
+        this.weatherModifier = 1.0;
+        this.rainParticles = [];
+        for(let i=0; i<150; i++) {
+            this.rainParticles.push({
+                x: Math.random() * CANVAS_WIDTH, 
+                y: Math.random() * CANVAS_HEIGHT, 
+                speed: 4 + Math.random() * 4
+            });
+        }
+        
+        // Setup initial blank map
+        this.grid = Array(COLS).fill().map(() => Array(ROWS).fill(TERRAIN.SAND));
+        this.riverDepths = Array(COLS).fill().map(() => Array(ROWS).fill(0));
+        this.buildRiverGhaggar();
+
+        this.loop = this.loop.bind(this);
+        setTimeout(() => {
+            requestAnimationFrame(this.loop);
+            this.showPhaseModal(1);
+        }, 100);
+    }
+
+    resize() {
+        const scale = Math.min(
+            (window.innerWidth - 40) / CANVAS_WIDTH,
+            (window.innerHeight - 120) / CANVAS_HEIGHT
+        );
+        this.canvas.style.width = `${CANVAS_WIDTH * scale}px`;
+        this.canvas.style.height = `${CANVAS_HEIGHT * scale}px`;
+    }
+
+    // --- Phase Management ---
+
+    showPhaseModal(phaseNum) {
+        this.nextPhase = phaseNum;
+        this.historyPaused = true;
+        this.isShaking = false;
+        this.weather = 'clear';
+        this.weatherTimer = 0;
+        
+        const info = PHASE_INFO[phaseNum];
+        document.getElementById('modal-title').innerText = info.title;
+        document.getElementById('modal-desc').innerText = info.desc;
+        document.getElementById('modal-btn').innerText = info.btnText;
+        
+        document.getElementById('phase-modal').classList.remove('hidden');
+        document.getElementById('historical-event').style.opacity = '0';
+    }
+
+    triggerNextPhase() {
+        document.getElementById('phase-modal').classList.add('hidden');
+        this.historyPaused = false;
+        this.phase = this.nextPhase;
+
+        // Execute phase-specific setup
+        switch (this.phase) {
+            case 1:
+                this.initPhase1();
+                break;
+            case 2:
+                this.triggerPhase2Quake();
+                break;
+            case 3:
+                this.buildPhase3Mature();
+                break;
+            case 4:
+                this.evolvePhase4();
+                break;
+            case 5:
+                this.showPhaseModal(1); // Restart
+                break;
+        }
+        
+        this.updateUI(Math.floor(this.time / 60), true);
+    }
+
+    // --- Phase Logic Definitions ---
+
+    initPhase1() {
+        this.year = -2900;
+        this.riverHealth = 1.0;
+        this.weather = 'clear';
+        this.weatherModifier = 1.0;
+        this.grid = Array(COLS).fill().map(() => Array(ROWS).fill(TERRAIN.SAND));
+        this.houses = [];
+        this.villagers = [];
+        this.workplaces = [];
+        
+        this.buildRiverGhaggar();
+
+        const cx = 22, cy = 35, cw = 28, ch = 45;
+        this.drawHollowRect(cx, cy, cw, ch, 2, TERRAIN.WALL); // Early fortification
+        this.fillBlockWithHouses(cx + 3, cy + 3, cx + cw - 3, cy + ch - 3);
+        this.workplaces.push({x: cx + cw/2, y: cy + ch/2, type: 'town_center'});
+        
+        this.spawnVillagers(Math.floor(this.maxPopulation * 0.4));
+    }
+
+    triggerPhase2Quake() {
+        this.year = -2600;
+        this.isShaking = true;
+        
+        document.getElementById('historical-event').innerText = "Seismic Activity Destroys Settlement!";
+        document.getElementById('historical-event').style.opacity = '1';
+        
+        for (let x = 0; x < COLS; x++) {
+            for (let y = 0; y < ROWS; y++) {
+                if (this.grid[x][y] === TERRAIN.WALL || this.grid[x][y] === TERRAIN.HOUSE_WALL || this.grid[x][y] === TERRAIN.HOUSE_FLOOR) {
+                    if (Math.random() > 0.15) {
+                        this.grid[x][y] = TERRAIN.RUBBLE;
+                    }
+                }
+            }
+        }
+        
+        // Scatter population, leaving 10 survivors wandering the ruins
+        let survivors = 10;
+        this.villagers.forEach(v => {
+            if (survivors > 0) {
+                survivors--;
+                v.home = null; // No home in the ruins
+            } else {
+                v.state = 'migrating';
+                v.targetX = Math.random() > 0.5 ? -10 : COLS + 10;
+                v.targetY = Math.random() * ROWS;
+            }
+        });
+        this.houses = [];
+        this.workplaces = this.workplaces.filter(wp => wp.type === 'river');
+    }
+
+    buildPhase3Mature() {
+        this.year = -2500;
+        
+        // Build directly over the rubble (clear it out visually as they rebuild)
+        for (let x = 0; x < COLS; x++) {
+            for (let y = 0; y < ROWS; y++) {
+                if (this.grid[x][y] === TERRAIN.RUBBLE) {
+                    this.grid[x][y] = TERRAIN.SAND;
+                }
+            }
+        }
+        
+        this.buildCemetery();
+        this.buildCitadelKLB1();
+        this.buildLowerCityKLB2();
+        
+        this.spawnVillagers(this.maxPopulation);
+        
+        document.getElementById('historical-event').innerText = "Rebuilding Mature Harappan Settlement";
+        document.getElementById('historical-event').style.opacity = '1';
+        setTimeout(() => {
+            if (this.phase === 3) document.getElementById('historical-event').style.opacity = '0';
+        }, 5000);
+    }
+
+    evolvePhase4() {
+        this.year = -2400;
+        this.weather = 'clear'; // Ensure starting clear
+        
+        this.buildRitualStructureKLB3();
+        
+        // Build World's Earliest Ploughed Field
+        const fx = 40, fy = 80, fw = 15, fh = 15;
+        this.drawRect(fx, fy, fw, fh, TERRAIN.FIELD);
+        for (let x = fx; x < fx + fw; x += 2) {
+            this.drawRect(x, fy, 1, fh, TERRAIN.SAND); // Furrows
+        }
+        this.workplaces.push({x: fx + fw/2, y: fy + fh/2, type: 'field'});
+
+        // Add baked brick drains
+        const vStreets = [72, 88, 104, 120];
+        const hStreets = [45, 65];
+        vStreets.forEach(x => {
+            for (let y = 25 + 2; y < 25 + 65 - 2; y+=3) this.grid[x+1][y] = TERRAIN.DRAIN;
+        });
+        hStreets.forEach(y => {
+            for (let x = 60 + 2; x < 60 + 68 - 2; x+=3) this.grid[x][y+1] = TERRAIN.DRAIN;
+        });
+
+        document.getElementById('historical-event').innerText = "Evolution - Fields, Drains & Rituals";
+        document.getElementById('historical-event').style.opacity = '1';
+        setTimeout(() => {
+            if (this.phase === 4 && this.year > -2200) document.getElementById('historical-event').style.opacity = '0';
+        }, 5000);
+    }
+
+    // --- Geometry Builders ---
+
+    drawRect(x, y, w, h, type) {
+        for (let i = Math.floor(x); i < Math.floor(x + w); i++) {
+            for (let j = Math.floor(y); j < Math.floor(y + h); j++) {
+                if (i >= 0 && i < COLS && j >= 0 && j < ROWS) {
+                    this.grid[i][j] = type;
+                }
+            }
+        }
+    }
+
+    drawHollowRect(x, y, w, h, thickness, type) {
+        this.drawRect(x, y, w, thickness, type); 
+        this.drawRect(x, y + h - thickness, w, thickness, type); 
+        this.drawRect(x, y, thickness, h, type); 
+        this.drawRect(x + w - thickness, y, thickness, h, type); 
+    }
+
+    buildRiverGhaggar() {
+        for(let x = 0; x < COLS; x++) {
+            let riverEdge = 16 + Math.sin(x / 20) * 4 + Math.cos(x / 8) * 2;
+            for(let y = 0; y < 35; y++) {
+                let depth = 1.0 - (y / riverEdge); 
+                this.riverDepths[x][y] = depth;
+                if (depth > 0) {
+                    this.grid[x][y] = TERRAIN.WATER;
+                }
+            }
+        }
+        this.workplaces.push({x: 40, y: 20, type: 'river'});
+        this.workplaces.push({x: 80, y: 18, type: 'river'});
+        this.workplaces.push({x: 120, y: 19, type: 'river'});
+    }
+
+    buildCemetery() {
+        this.drawRect(4, 75, 12, 18, TERRAIN.CEMETERY);
+        for(let i=0; i<15; i++) {
+            this.grid[5 + Math.floor(Math.random()*10)][76 + Math.floor(Math.random()*16)] = TERRAIN.WALL;
+        }
+    }
+
+    buildCitadelKLB1() {
+        const cx = 22, cy = 35, cw = 28, ch = 45;
+        this.drawHollowRect(cx, cy, cw, ch, 3, TERRAIN.WALL);
+        this.drawRect(cx, cy + 22, cw, 3, TERRAIN.WALL);
+        
+        this.drawRect(cx + 12, cy, 4, 3, TERRAIN.STREET); 
+        this.drawRect(cx + cw - 3, cy + 26, 3, 4, TERRAIN.STREET); 
+        this.drawRect(cx + 8, cy + ch - 3, 4, 3, TERRAIN.STREET); 
+
+        this.drawRect(cx + 5, cy + 28, 8, 12, TERRAIN.PLATFORM);
+        this.drawRect(cx + 15, cy + 28, 8, 12, TERRAIN.PLATFORM);
+        this.workplaces.push({x: cx + 9, y: cy + 32, type: 'citadel'});
+        this.workplaces.push({x: cx + 19, y: cy + 32, type: 'citadel'});
+
+        this.fillBlockWithHouses(cx + 4, cy + 4, cx + cw - 4, cy + 20);
+    }
+
+    buildLowerCityKLB2() {
+        const lx = 60, ly = 25, lw = 68, lh = 65;
+        
+        this.drawHollowRect(lx, ly, lw, lh, 2, TERRAIN.WALL);
+
+        this.drawRect(lx, ly + 35, 2, 5, TERRAIN.STREET); 
+        this.drawRect(lx + 15, ly, 5, 2, TERRAIN.STREET); 
+        this.drawRect(lx + 45, ly, 5, 2, TERRAIN.STREET); 
+        this.drawRect(lx + 30, ly + lh - 2, 5, 2, TERRAIN.STREET); 
+
+        const vStreets = [72, 88, 104, 120];
+        const hStreets = [45, 65];
+
+        vStreets.forEach(x => this.drawRect(x, ly + 2, 3, lh - 4, TERRAIN.STREET));
+        hStreets.forEach(y => this.drawRect(lx + 2, y, lw - 4, 3, TERRAIN.STREET));
+
+        this.drawRect(lx + 2, ly + 35, 12, 5, TERRAIN.STREET);
+
+        let vLines = [lx + 2, ...vStreets, lx + lw - 2];
+        let hLines = [ly + 2, ...hStreets, ly + lh - 2];
+
+        for (let i = 0; i < vLines.length - 1; i++) {
+            for (let j = 0; j < hLines.length - 1; j++) {
+                this.fillBlockWithHouses(vLines[i] + 3, hLines[j] + 3, vLines[i+1], hLines[j+1]);
+            }
+        }
+    }
+
+    buildRitualStructureKLB3() {
+        const rx = 142, ry = 55;
+        this.drawRect(rx, ry, 8, 10, TERRAIN.PLATFORM);
+        this.drawRect(rx + 3, ry + 4, 2, 2, TERRAIN.WALL); 
+        this.workplaces.push({x: rx - 2, y: ry + 5, type: 'ritual'});
+    }
+
+    fillBlockWithHouses(x1, y1, x2, y2) {
+        let houseSize = 4;
+        for (let x = x1; x <= x2 - houseSize; x += houseSize + 1) { 
+            for (let y = y1; y <= y2 - houseSize; y += houseSize + 1) {
+                if (Math.random() > 0.2) { 
+                    this.buildHouse(x, y, houseSize, houseSize);
+                }
+            }
+        }
+    }
+
+    buildHouse(x, y, w, h) {
+        this.drawHollowRect(x, y, w, h, 1, TERRAIN.HOUSE_WALL);
+        this.drawRect(x + 1, y + 1, w - 2, h - 2, TERRAIN.HOUSE_FLOOR);
+        
+        let edge = Math.floor(Math.random() * 4);
+        if (edge === 0) this.grid[x + 1][y] = TERRAIN.HOUSE_FLOOR; 
+        if (edge === 1) this.grid[x + 1][y + h - 1] = TERRAIN.HOUSE_FLOOR; 
+        if (edge === 2) this.grid[x][y + 1] = TERRAIN.HOUSE_FLOOR; 
+        if (edge === 3) this.grid[x + w - 1][y + 1] = TERRAIN.HOUSE_FLOOR; 
+
+        this.houses.push({ x: x+1, y: y+1, w: w-2, h: h-2, centerX: x + w/2, centerY: y + h/2 });
+    }
+
+    spawnVillagers(count) {
+        if (this.houses.length === 0) return;
+        for (let i = 0; i < count; i++) {
+            let house = this.houses[Math.floor(Math.random() * this.houses.length)];
+            this.villagers.push({
+                id: Math.random(),
+                x: house.centerX,
+                y: house.centerY,
+                home: house,
+                color: CLOTHING_COLORS[Math.floor(Math.random() * CLOTHING_COLORS.length)],
+                targetX: null,
+                targetY: null,
+                state: 'idle',
+                waitTimer: 0,
+                lastX: house.centerX,
+                lastY: house.centerY,
+                stuckFrames: 0
+            });
+        }
+    }
+
+    isInBounds(x, y) {
+        return x >= 0 && x < COLS && y >= 0 && y < ROWS;
+    }
+    
+    isSolid(x, y, villager = null) {
+        if (!this.isInBounds(x, y)) return true;
+        const tile = this.grid[Math.floor(x)][Math.floor(y)];
+        
+        if (villager && villager.state === 'migrating' && (tile === TERRAIN.WALL || tile === TERRAIN.HOUSE_WALL || tile === TERRAIN.RUBBLE)) {
+            return false;
+        }
+
+        return tile === TERRAIN.WALL || tile === TERRAIN.HOUSE_WALL || tile === TERRAIN.WATER || tile === TERRAIN.PLATFORM || tile === TERRAIN.RUBBLE;
+    }
+
+    togglePause() {
+        this.isPaused = !this.isPaused;
+        document.getElementById('pauseBtn').innerText = this.isPaused ? 'Resume' : 'Pause';
+    }
+
+    speedUp() {
+        if (this.yearSpeed === 0.1) {
+            this.yearSpeed = 0.5;
+            this.daySpeed = 2;
+        } else {
+            this.yearSpeed = 0.1;
+            this.daySpeed = 0.5;
+        }
+    }
+
+    notify(msg, isDanger = false) {
+        let el = document.createElement('div');
+        el.innerText = msg;
+        el.style.background = isDanger ? 'rgba(139, 0, 0, 0.8)' : 'rgba(30, 20, 15, 0.8)';
+        el.style.color = isDanger ? '#ef4444' : '#fef3c7';
+        el.style.padding = '8px 12px';
+        el.style.borderRadius = '4px';
+        el.style.border = isDanger ? '1px solid #ef4444' : '1px solid #8b5a33';
+        el.style.fontSize = '12px';
+        el.style.transition = 'opacity 1s';
+        
+        let container = document.getElementById('notification-area');
+        container.appendChild(el);
+        
+        setTimeout(() => {
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 1000);
+        }, 5000);
+    }
+
+    updateEvents() {
+        if (this.weatherTimer > 0) {
+            this.weatherTimer -= this.daySpeed;
+            if (this.weatherTimer <= 0) {
+                this.weather = 'clear';
+                this.weatherModifier = 1.0;
+                this.notify("Conditions have returned to normal.");
+            }
+        } else if (!this.historyPaused && this.phase !== 2 && Math.random() < 0.015) {
+            let r = Math.random();
+            
+            if (this.phase === 1 || this.phase === 3) {
+                // Phases 1 and 3: Rains, Floods, occasional mild drought
+                if (r < 0.5) {
+                    this.weather = 'rain';
+                    this.weatherModifier = 1.0; 
+                    this.weatherTimer = 60 + Math.random() * 100;
+                    this.notify("Monsoon rains have started over Kalibangan.");
+                } else if (r < 0.8 && this.riverHealth > 0.2) {
+                    this.weather = 'flood';
+                    this.weatherModifier = 1.3;
+                    this.weatherTimer = 80 + Math.random() * 100;
+                    this.notify("WARNING: Heavy rains have caused the River Ghaggar to flood!", true);
+                } else if (this.riverHealth > 0.2) {
+                    this.weather = 'drought';
+                    this.weatherModifier = 0.5;
+                    this.weatherTimer = 120 + Math.random() * 150;
+                    this.notify("A brief drought has begun. The river recedes.", true);
+                }
+            } else if (this.phase === 4) {
+                // Phase 4: No rain/floods. Only severe droughts and famine.
+                if (r < 0.6) {
+                    this.weather = 'drought';
+                    this.weatherModifier = 0.3; // More severe
+                    this.weatherTimer = 200 + Math.random() * 200;
+                    this.notify("A severe drought ravages the land. Crops are dying.", true);
+                } else {
+                    this.weather = 'famine'; // Treat famine as an extreme event
+                    this.weatherModifier = 0.1;
+                    this.weatherTimer = 150 + Math.random() * 100;
+                    this.notify("FAMINE strikes Kalibangan! Food stores are empty.", true);
+                    
+                    // Famine instantly reduces population
+                    let active = this.villagers.filter(v => v.state !== 'migrating');
+                    let deaths = Math.min(active.length, Math.floor(Math.random() * 5) + 2);
+                    for(let i=0; i<deaths; i++) {
+                         if(active[i]) {
+                             this.villagers = this.villagers.filter(v => v.id !== active[i].id);
+                         }
+                    }
+                }
+            }
+        }
+
+        // Random tragic deaths based on era
+        if (!this.historyPaused && this.villagers.length > 15 && Math.random() < 0.005) {
+            let causes = [];
+            if (this.phase === 4) {
+                causes = ["starvation", "severe dehydration", "a blinding dust storm", "disease from stagnant water"];
+            } else {
+                causes = ["disease", "a wild animal attack near the river", "a structural collapse", "a farming accident"];
+            }
+            
+            let cause = causes[Math.floor(Math.random() * causes.length)];
+            this.notify(`Tragedy: A villager died from ${cause}.`, true);
+            
+            let active = this.villagers.filter(v => v.state !== 'migrating');
+            if (active.length > 0) {
+                let victim = active[Math.floor(Math.random() * active.length)];
+                this.villagers = this.villagers.filter(v => v.id !== victim.id);
+            }
+        }
+    }
+
+    updateRiverAndEnvironment() {
+        if (this.year < -2200) {
+            this.riverHealth = 1.0;
+        } else if (this.year >= -2200 && this.year < -1900) {
+            this.riverHealth = 1.0 - ((this.year + 2200) / 300);
+        } else {
+            this.riverHealth = 0.0;
+        }
+
+        let activeHealth = this.riverHealth * this.weatherModifier;
+        if (this.weather === 'flood') activeHealth += 0.4; // Force depth expansion
+
+        for(let x = 0; x < COLS; x++) {
+            for(let y = 0; y < 35; y++) {
+                if (this.grid[x][y] === TERRAIN.WALL || this.grid[x][y] === TERRAIN.HOUSE_WALL) continue; // Walls don't wash away here
+
+                let cellDepth = this.riverDepths[x][y];
+                if (cellDepth === undefined) continue;
+
+                if (cellDepth > 0) {
+                    if (activeHealth < cellDepth) {
+                        this.grid[x][y] = TERRAIN.DRY_BED; 
+                    } else {
+                        this.grid[x][y] = TERRAIN.WATER; 
+                    }
+                } else {
+                    // Flood expansion over sand
+                    if (this.weather === 'flood' && (activeHealth + cellDepth > 0.9)) {
+                        this.grid[x][y] = TERRAIN.WATER;
+                    } else {
+                        if (this.grid[x][y] === TERRAIN.WATER || this.grid[x][y] === TERRAIN.DRY_BED) {
+                            this.grid[x][y] = TERRAIN.SAND;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    updatePopulation() {
+        let targetPopulation = Math.max(0, Math.floor(this.maxPopulation * this.riverHealth));
+        let activeVillagers = this.villagers.filter(v => v.state !== 'migrating');
+        
+        if (activeVillagers.length > targetPopulation) {
+            let toRemove = activeVillagers.length - targetPopulation;
+            for(let i=0; i<toRemove; i++) {
+                let v = activeVillagers[Math.floor(Math.random() * activeVillagers.length)];
+                if (v) {
+                    v.state = 'migrating';
+                    v.targetX = Math.random() > 0.5 ? -10 : COLS + 10; 
+                    v.targetY = ROWS / 2 + (Math.random() * 40 - 20);
+                    v.waitTimer = 0;
+                    activeVillagers = activeVillagers.filter(av => av.id !== v.id);
+                }
+            }
+        }
+    }
+
+    update() {
+        if (this.isPaused) return;
+
+        // Daily Time Cycle (Runs continuously)
+        this.time += this.daySpeed * 2; 
+        if (this.time >= 24 * 60) this.time = 0;
+        
+        // Historical Progression (Paused when Modal is up)
+        if (!this.historyPaused) {
+            this.year += this.yearSpeed;
+
+            // Phase Completion Monitors
+            if (this.phase === 1 && this.year >= -2600) {
+                this.showPhaseModal(2);
+            } else if (this.phase === 2 && this.year >= -2500) { // 100 year gap before rebuilding
+                this.showPhaseModal(3);
+            } else if (this.phase === 3 && this.year >= -2400) {
+                this.showPhaseModal(4);
+            } else if (this.phase === 4 && this.year >= -1900) {
+                this.showPhaseModal(5);
+            }
+        }
+        
+        // Disable shaking shortly after phase 2 begins
+        if (this.phase === 2 && this.year >= -2590) this.isShaking = false; 
+
+        const hour = Math.floor(this.time / 60);
+        const isDay = hour >= 6 && hour < 18;
+        
+        if (Math.floor(this.time) % 10 === 0) {
+            if (!this.historyPaused) {
+                this.updateEvents();
+                this.updateRiverAndEnvironment();
+                this.updatePopulation();
+            }
+            this.updateUI(hour, isDay);
+        }
+
+        // Villager AI and Physics
+        for (let i = this.villagers.length - 1; i >= 0; i--) {
+            let v = this.villagers[i];
+
+            // Flood drowning logic
+            let currentGridTile = this.grid[Math.floor(v.x)]?.[Math.floor(v.y)];
+            if (currentGridTile === TERRAIN.WATER && this.weather === 'flood' && Math.random() < 0.02) {
+                this.notify("Tragedy: A villager was swept away by the flood!", true);
+                this.villagers.splice(i, 1);
+                continue;
+            }
+
+            if (v.waitTimer > 0 && v.state !== 'migrating') {
+                v.waitTimer -= this.daySpeed;
+                continue;
+            }
+
+            if (v.state !== 'migrating' && (v.targetX === null || v.targetY === null)) {
+                if (isDay) {
+                    v.state = 'working';
+                    let r = Math.random();
+                    if (r < 0.3 && this.workplaces.length > 0) {
+                        let wp = this.workplaces[Math.floor(Math.random() * this.workplaces.length)];
+                        v.targetX = wp.x + (Math.random() * 4 - 2);
+                        v.targetY = wp.y + (Math.random() * 4 - 2);
+                    } else if (r < 0.8 && this.phase >= 3) {
+                        // Mature grid wandering
+                        if (Math.random() > 0.5) {
+                            v.targetX = 60 + Math.random() * 68;
+                            v.targetY = 45 + Math.random() * 20;
+                        } else {
+                            v.targetX = 72 + Math.random() * 48;
+                            v.targetY = 25 + Math.random() * 65;
+                        }
+                    } else {
+                        // General wandering
+                        v.targetX = 20 + Math.random() * 80;
+                        v.targetY = 20 + Math.random() * 60;
+                    }
+                } else if (v.home) {
+                    v.state = 'sleeping';
+                    v.targetX = v.home.centerX + (Math.random() * 0.5 - 0.25);
+                    v.targetY = v.home.centerY + (Math.random() * 0.5 - 0.25);
+                } else {
+                    // No home (quake survivor), wander aimlessly
+                     v.targetX = v.x + (Math.random() * 10 - 5);
+                     v.targetY = v.y + (Math.random() * 10 - 5);
+                }
+            }
+
+            let dx = v.targetX - v.x;
+            let dy = v.targetY - v.y;
+            let dist = Math.hypot(dx, dy);
+
+            if (dist < 0.5 && v.state !== 'migrating') {
+                v.targetX = null;
+                v.targetY = null;
+                v.waitTimer = isDay ? (30 + Math.random() * 100) : (200 + Math.random() * 200);
+                v.stuckFrames = 0;
+            } else {
+                let speed = 0.12 * this.daySpeed;
+                
+                if (v.state === 'migrating') speed *= 1.5; 
+                if (this.weather === 'rain') speed *= 1.2; // Run in the rain
+                
+                let currentTile = this.grid[Math.floor(v.x)]?.[Math.floor(v.y)];
+                if (currentTile === TERRAIN.STREET) speed *= 1.4;
+
+                let nextX = v.x + (dx / dist) * speed;
+                let nextY = v.y + (dy / dist) * speed;
+
+                if (!this.isSolid(nextX, v.y, v)) v.x = nextX;
+                if (!this.isSolid(v.x, nextY, v)) v.y = nextY;
+                
+                if (Math.abs(v.x - v.lastX) < 0.01 && Math.abs(v.y - v.lastY) < 0.01) {
+                    v.stuckFrames++;
+                } else {
+                    v.stuckFrames = 0;
+                }
+
+                v.lastX = v.x;
+                v.lastY = v.y;
+
+                if (v.stuckFrames > 20 && v.state !== 'migrating') {
+                    v.targetX = null; 
+                    v.stuckFrames = 0;
+                    v.x += (Math.random() - 0.5);
+                    v.y += (Math.random() - 0.5);
+                }
+                
+                if (v.state !== 'migrating') {
+                    v.x = Math.max(0, Math.min(COLS - 0.1, v.x));
+                    v.y = Math.max(0, Math.min(ROWS - 0.1, v.y));
+                } else {
+                    if (v.x < -5 || v.x > COLS + 5) {
+                        this.villagers.splice(i, 1);
+                    }
+                }
+            }
+        }
+    }
+
+    updateUI(hour, isDay) {
+        let displayYear = Math.abs(Math.floor(this.year)) + " BCE";
+        document.getElementById('year-display').innerText = displayYear;
+        
+        let era = "Phase " + this.phase;
+        if (this.phase === 1) era += ": Early Harappan";
+        else if (this.phase === 2) era += ": Seismic Destruction";
+        else if (this.phase === 3) era += ": Mature Harappan Rebuild";
+        else if (this.phase === 4 && this.year < -2200) era += ": Evolution & Peak";
+        else if (this.year >= -2200 && this.year < -1900) era = "Late Harappan (Decline)";
+        else if (this.year >= -1900) era = "Post-Urban (Abandoned)";
+        
+        document.getElementById('era-display').innerText = era;
+
+        const riverDisplay = document.getElementById('river-display');
+        const eventBox = document.getElementById('historical-event');
+        
+        if (this.riverHealth > 0.8 && this.weather !== 'drought' && this.weather !== 'flood' && this.weather !== 'famine') {
+            riverDisplay.innerText = "Flowing";
+            riverDisplay.className = "value";
+        } else if (this.weather === 'flood') {
+            riverDisplay.innerText = "Flooding!";
+            riverDisplay.className = "value danger";
+        } else if (this.weather === 'drought' || this.weather === 'famine') {
+            riverDisplay.innerText = "Critically Low";
+            riverDisplay.className = "value danger";
+        } else if (this.riverHealth > 0.1) {
+            riverDisplay.innerText = "Receding";
+            riverDisplay.className = "value danger";
+            eventBox.innerText = "The River Ghaggar is Drying!";
+            eventBox.style.opacity = '1';
+        } else {
+            riverDisplay.innerText = "Dried Up";
+            riverDisplay.className = "value danger";
+            eventBox.innerText = "Kalibangan is Abandoned";
+            eventBox.style.opacity = '1';
+        }
+
+        let mins = Math.floor(this.time % 60);
+        let timeStr = `${hour.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        document.getElementById('time-display').innerText = timeStr;
+        
+        let stablePop = this.villagers.filter(v => v.state !== 'migrating').length;
+        document.getElementById('pop-display').innerText = stablePop;
+    }
+
+    toggleMusic() {
+        if (!isYtReady || !ytPlayer) {
+            console.log("YouTube player is not ready yet.");
+            return;
+        }
+
+        if (this.isMusicPlaying) {
+            ytPlayer.pauseVideo();
+            this.isMusicPlaying = false;
+            document.getElementById('musicBtn').innerText = 'Play Music';
+        } else {
+            ytPlayer.playVideo();
+            this.isMusicPlaying = true;
+            document.getElementById('musicBtn').innerText = 'Pause Music';
+        }
+    }
+
+    draw() {
+        this.ctx.save();
+        if (this.isShaking) {
+            let shakeX = (Math.random() - 0.5) * 8;
+            let shakeY = (Math.random() - 0.5) * 8;
+            this.ctx.translate(shakeX, shakeY);
+        }
+
+        this.ctx.fillStyle = COLORS[TERRAIN.SAND];
+        this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Terrain
+        for (let x = 0; x < COLS; x++) {
+            for (let y = 0; y < ROWS; y++) {
+                let tile = this.grid[x][y];
+                if (tile !== TERRAIN.SAND) {
+                    this.ctx.fillStyle = COLORS[tile];
+                    this.ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    
+                    if (tile === TERRAIN.WATER && Math.random() > 0.96) {
+                        this.ctx.fillStyle = '#78b5c4';
+                        this.ctx.fillRect(x * TILE_SIZE + 1, y * TILE_SIZE + 1, 2, 2);
+                    }
+                    if (tile === TERRAIN.DRY_BED && Math.random() > 0.95) {
+                        this.ctx.fillStyle = '#c1a179'; 
+                        this.ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE + 1, 3, 1);
+                    }
+                    if ((tile === TERRAIN.WALL || tile === TERRAIN.PLATFORM) && (x+y)%3 === 0) {
+                        this.ctx.fillStyle = 'rgba(0,0,0,0.15)';
+                        this.ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, 1);
+                    }
+                    if (tile === TERRAIN.RUBBLE) {
+                        this.ctx.fillStyle = (Math.random() > 0.5) ? '#7a624a' : '#5e4833';
+                        if (Math.random() > 0.7) this.ctx.fillRect(x * TILE_SIZE + Math.random()*2, y * TILE_SIZE + Math.random()*2, 3, 3);
+                    }
+                    if (tile === TERRAIN.DRAIN) {
+                        this.ctx.fillStyle = 'rgba(0,0,0,0.4)';
+                        this.ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 2, 3, 3);
+                    }
+                }
+            }
+        }
+
+        // Villagers
+        this.villagers.forEach(v => {
+            this.ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            this.ctx.fillRect(v.x * TILE_SIZE, v.y * TILE_SIZE + 3, 4, 2);
+            
+            this.ctx.fillStyle = v.color;
+            this.ctx.fillRect(v.x * TILE_SIZE, v.y * TILE_SIZE, 4, 4);
+            
+            this.ctx.fillStyle = '#d9a066';
+            this.ctx.fillRect(v.x * TILE_SIZE + 1, v.y * TILE_SIZE - 2, 2, 2);
+        });
+
+        // Lighting
+        let hour = this.time / 60;
+        if (hour < 5 || hour >= 19) {
+            this.ctx.fillStyle = COLORS.NIGHT_OVERLAY;
+            this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            if (this.year < -1950 && this.phase !== 2) {
+                this.houses.forEach(house => {
+                    if (Math.random() > 0.1) { 
+                        let gradient = this.ctx.createRadialGradient(
+                            house.centerX * TILE_SIZE, house.centerY * TILE_SIZE, 0,
+                            house.centerX * TILE_SIZE, house.centerY * TILE_SIZE, TILE_SIZE * 3
+                        );
+                        gradient.addColorStop(0, 'rgba(251, 146, 60, 0.4)'); 
+                        gradient.addColorStop(1, 'rgba(251, 146, 60, 0)');
+                        this.ctx.fillStyle = gradient;
+                        this.ctx.fillRect((house.x - 2)*TILE_SIZE, (house.y - 2)*TILE_SIZE, TILE_SIZE*6, TILE_SIZE*6);
+                    }
+                });
+            }
+        } else if ((hour >= 5 && hour < 6) || (hour >= 18 && hour < 19)) {
+            this.ctx.fillStyle = COLORS.DUSK_OVERLAY;
+            this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+
+        // Rain visual effects overlay
+        if (this.weather === 'rain' || this.weather === 'flood') {
+            this.ctx.fillStyle = 'rgba(150, 180, 220, 0.25)';
+            this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT); // Gloomy tint
+
+            this.ctx.strokeStyle = 'rgba(200, 220, 255, 0.6)';
+            this.ctx.lineWidth = 1;
+            this.ctx.beginPath();
+            this.rainParticles.forEach(p => {
+                this.ctx.moveTo(p.x, p.y);
+                this.ctx.lineTo(p.x + p.speed / 2, p.y + p.speed * 2);
+                
+                // Animate raindrops
+                if (!this.isPaused) {
+                    p.y += p.speed * 4 * this.daySpeed;
+                    p.x += p.speed * this.daySpeed;
+                    if (p.y > CANVAS_HEIGHT) {
+                        p.y = -10;
+                        p.x = Math.random() * CANVAS_WIDTH;
+                    }
+                }
+            });
+            this.ctx.stroke();
+        }
+
+        this.ctx.restore();
+    }
+
+    loop() {
+        this.update();
+        this.draw();
+        requestAnimationFrame(this.loop);
+    }
+}
+
+window.onload = () => {
+    window.sim = new KalibanganSim();
+};
+</script>
+</body>
+</html>
